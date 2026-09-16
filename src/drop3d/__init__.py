@@ -51,6 +51,13 @@ from .dynamics import (
     steady_sliding_excess_ca,
 )
 from .fitting import EllipseFit, angle_from_tangent, circle_contact, fit_circle, fit_ellipse
+from .oscillation import (
+    OscillationResult,
+    dilational_modulus,
+    fit_oscillation,
+    frames_per_cycle_note,
+    synthesise_oscillation,
+)
 from .surface_energy import (
     PROBE_LIQUIDS,
     ProbeLiquid,
@@ -124,4 +131,7 @@ __all__ = [
     'bo_alpha', 'bo_alpha_convention_factor',
     'steady_sliding_excess_ca', 'sliding_velocity',
     'footprint_aspect', 'footprint_from_contact_line', 'hysteresis',
+    # oscillating pendant drop (dynamic, Module A frame-by-frame)
+    'fit_oscillation', 'OscillationResult', 'dilational_modulus',
+    'synthesise_oscillation', 'frames_per_cycle_note',
 ]
