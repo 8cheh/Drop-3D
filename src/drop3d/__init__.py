@@ -50,7 +50,7 @@ from .dynamics import (
     sliding_velocity,
     steady_sliding_excess_ca,
 )
-from .fitting import angle_from_tangent, circle_contact, fit_circle
+from .fitting import EllipseFit, angle_from_tangent, circle_contact, fit_circle, fit_ellipse
 from .surface_energy import (
     PROBE_LIQUIDS,
     ProbeLiquid,
@@ -100,6 +100,7 @@ __all__ = [
     'YoungLaplaceShape', 'PENDANT', 'SESSILE',
     # fits
     'fit_circle', 'circle_contact', 'angle_from_tangent',
+    'fit_ellipse', 'EllipseFit',
     # tensiometry
     'young_laplace_fit', 'PendantFitResult', 'synthesise_pendant_drop',
     'detect_apex_and_radius', 'surface_tension', 'pixel_scale_from_needle',
@@ -122,5 +123,5 @@ __all__ = [
     'capillary_number', 'cox_voinov_angle',
     'bo_alpha', 'bo_alpha_convention_factor',
     'steady_sliding_excess_ca', 'sliding_velocity',
-    'footprint_aspect', 'hysteresis',
+    'footprint_aspect', 'footprint_from_contact_line', 'hysteresis',
 ]

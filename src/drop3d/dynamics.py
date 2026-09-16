@@ -63,7 +63,7 @@ __all__ = [
     'capillary_number', 'cox_voinov_angle',
     'bo_alpha', 'bo_alpha_convention_factor',
     'steady_sliding_excess_ca', 'sliding_velocity',
-    'footprint_aspect', 'hysteresis',
+    'footprint_aspect', 'footprint_from_contact_line', 'hysteresis',
 ]
 
 
@@ -488,7 +488,51 @@ def sliding_velocity(ca: float, viscosity_Pas: float,
 
 
 # ------------------------------------------------------------ footprint shape
-def footprint_aspect(length_m: float, width_m: float) -> dict:
+def footprint_from_contact_line(x, y) -> dict:
+    """Measure a drop footprint from its extracted contact line.
+
+    Closes the geometry half of Module B: contact-line points in, ``L``, ``W``,
+    aspect ratio and orientation out, with the aspect-ratio band check attached.
+
+    **Read ``aspect_is_informative`` before using the ratio.**  An ellipse fit
+    to a *partial* contact line -- occluded, or truncated by the field of view --
+    returns a confidently wrong, over-elongated ellipse while reporting a small
+    RMS.  The fit detects this (see
+    :meth:`drop3d.fitting.EllipseFit.aspect_is_informative`) but cannot correct
+    it, so a caller that ignores the flag will read an aspect ratio wrong by
+    ~1.0 rather than by ~0.01.
+    """
+    from .fitting import fit_ellipse
+
+    ell = fit_ellipse(np.asarray(x, dtype=float), np.asarray(y, dtype=float))
+    out = {'ok': False, 'error': ell.error, 'ellipse': ell.to_dict(),
+           'aspect': None, 'aspect_is_informative': None, 'footprint': None,
+           'warnings': []}
+    if not ell.ok:
+        return out
+
+    out['aspect'] = ell.aspect
+    out['aspect_is_informative'] = ell.aspect_is_informative
+    out['ok'] = True
+    if ell.b is not None and ell.b > 0:
+        out['footprint'] = footprint_aspect(ell.length, ell.width,
+                                            aspect_std=ell.aspect_std)
+    if ell.aspect_is_informative is False:
+        out['warnings'].append(
+            f'the contact line covers only '
+            f'{ell.angular_coverage_deg:.0f} degrees and the fitted ellipse '
+            f'distorts it by {ell.coverage_mismatch_deg:.0f} degrees, so L/W is '
+            f'not determined. The fitted value {ell.aspect:.3f} is likely to be '
+            f'far too elongated; do not report it.')
+    out['warnings'].append(
+        'L/W is only meaningful alongside the drop volume and the tilt rate; '
+        'roll-off angle is not a material constant.')
+    return out
+
+
+def footprint_aspect(length_m: float, width_m: float,
+                     aspect_std: float | None = None,
+                     n_sigma: float = 3.0) -> dict:
     """Contact-line aspect ratio ``L/W``, with the baseline it must be read against.
 
     Even on a **homogeneous** surface, sliding-drop footprints are ellipses:
@@ -501,16 +545,30 @@ def footprint_aspect(length_m: float, width_m: float) -> dict:
     cannot support an inference of surface tension once ``L/W`` departs
     appreciably from 1, because the silhouette no longer encodes the
     axisymmetric shape the pendant-drop inversion assumes.
+
+    ``aspect_std`` is the uncertainty on the measured ratio.  Passing it makes
+    the band test statistical rather than a hard boundary: a footprint measured
+    at 1.098 with an uncertainty of 0.001 is **consistent with** the published
+    range, and calling it "outside" would turn a rounding-level difference into
+    a physical claim.  Only a value more than ``n_sigma`` beyond the band is
+    reported as outside.  With ``aspect_std`` omitted the comparison is strict.
     """
     if width_m <= 0:
         raise ValueError('width must be positive')
     ratio = float(length_m) / float(width_m)
+    tol = float(n_sigma) * float(aspect_std or 0.0)
+    lo, hi = 1.011, 1.097
+    within = (ratio - tol) <= hi and (ratio + tol) >= lo
     return {
         'ratio': ratio,
-        'is_within_reported_homogeneous_range': bool(1.011 <= ratio <= 1.097),
-        'warning': (None if ratio <= 1.097 else
-                    f'L/W = {ratio:.3f} exceeds the range reported for '
-                    f'homogeneous surfaces (1.011-1.097); the footprint is '
-                    f'notably elongated, which usually indicates surface '
-                    f'heterogeneity, pinning, or a segmentation error'),
+        'tolerance': tol,
+        'is_within_reported_homogeneous_range': bool(within),
+        'warning': (None if within else
+                    f'L/W = {ratio:.4f} is more than {n_sigma:g} sigma '
+                    f'(+/-{tol:.4f}) beyond the range reported for homogeneous '
+                    f'surfaces (1.011-1.097); the footprint is notably '
+                    f'elongated, which usually indicates surface '
+                    f'heterogeneity, pinning, or a segmentation error. Check '
+                    f'that the contact line is complete before concluding '
+                    f'anything.'),
     }
