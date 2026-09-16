@@ -30,6 +30,26 @@ blocked.  See ``docs/decisions/0001-license.md`` -- the licence is not settled
 yet, so treat this as not-yet-distributable.
 """
 
+from .dynamics import (
+    FURMIDGE_K_ADMISSIBLE,
+    FURMIDGE_K_FOURIER_MAX,
+    FURMIDGE_K_FOURIER_MIN,
+    FURMIDGE_K_ORIGINAL,
+    FURMIDGE_K_PIECEWISE_LINEAR,
+    FurmidgeResult,
+    bo_alpha,
+    bo_alpha_convention_factor,
+    capillary_number,
+    cox_voinov_angle,
+    dunlop_bo_sin_alpha,
+    dunlop_residual,
+    footprint_aspect,
+    fourier_c1,
+    furmidge_force,
+    hysteresis,
+    sliding_velocity,
+    steady_sliding_excess_ca,
+)
 from .fitting import angle_from_tangent, circle_contact, fit_circle
 from .surface_energy import (
     PROBE_LIQUIDS,
@@ -94,4 +114,13 @@ __all__ = [
     'coverage_test',
     # validity / OOD rejection
     'Check', 'ValidityReport', 'assess', 'THRESHOLDS', 'runs_test',
+    # dynamics (Module B: non-axisymmetric sliding / rolling drops)
+    'furmidge_force', 'FurmidgeResult', 'FURMIDGE_K_ORIGINAL',
+    'FURMIDGE_K_PIECEWISE_LINEAR', 'FURMIDGE_K_FOURIER_MIN',
+    'FURMIDGE_K_FOURIER_MAX', 'FURMIDGE_K_ADMISSIBLE',
+    'fourier_c1', 'dunlop_residual', 'dunlop_bo_sin_alpha',
+    'capillary_number', 'cox_voinov_angle',
+    'bo_alpha', 'bo_alpha_convention_factor',
+    'steady_sliding_excess_ca', 'sliding_velocity',
+    'footprint_aspect', 'hysteresis',
 ]
