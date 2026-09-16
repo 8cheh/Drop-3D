@@ -62,6 +62,17 @@ from .dynamics import (
     steady_sliding_excess_ca,
 )
 from .fitting import EllipseFit, angle_from_tangent, circle_contact, fit_circle, fit_ellipse
+from .hazards import (
+    SAMPLING_PLAN,
+    SCENARIOS,
+    SPATIAL_RESOLUTION_UM_PER_PX,
+    DynamicsReport,
+    Hazard,
+    acquisition_requirements,
+    assess_dynamics,
+    evaporation_hazard,
+    reporting_hazard,
+)
 from .oscillation import (
     OscillationResult,
     dilational_modulus,
@@ -149,4 +160,8 @@ __all__ = [
     'ConformalCalibration', 'calibrate', 'predict_interval', 'assess_width',
     'coverage_report', 'exchangeability_check', 'conformal_quantile',
     'required_calibration_size', 'DEFAULT_WO_BINS',
+    # dynamics-mode guard (acquisition hazards)
+    'assess_dynamics', 'DynamicsReport', 'Hazard', 'SAMPLING_PLAN',
+    'SCENARIOS', 'SPATIAL_RESOLUTION_UM_PER_PX', 'acquisition_requirements',
+    'evaporation_hazard', 'reporting_hazard',
 ]
