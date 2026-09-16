@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drop3d"
+version = "0.1.0"
+description = "Reconstruct droplet shape from images and measure interfacial properties"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "TBD - see docs/decisions/0001-license.md" }
+authors = [{ name = "Drop-3D team" }]
+keywords = ["pendant drop", "surface tension", "contact angle", "surface free energy",
+            "young-laplace", "tensiometry"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+# Runtime dependencies are deliberately minimal. numpy and scipy carry the
+# numerics; anything heavier (OpenCV, PyTorch) must be justified before it is
+# added, because every dependency is also a licence and a build burden.
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+imaging = [
+    "opencv-python>=4.8",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+drop3d-ps = "drop3d.tools.shape_parameter_scan:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: tests that take more than a few seconds",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# E,F = pycodestyle/pyflakes; I = import sorting; UP = pyupgrade;
+# B = bugbear; SIM = simplify; NPY = numpy-specific rules
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "NPY"]
+ignore = [
+    "E501",   # line length is handled by the formatter, not the linter
+    "B008",   # function calls in argument defaults are fine for our API style
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]   # assert False is fine in tests
