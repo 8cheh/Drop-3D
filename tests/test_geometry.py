@@ -133,48 +133,84 @@ def test_a_full_contact_line_is_informative():
     assert abs(r.coverage_mismatch_deg) < 10.0
 
 
-def test_a_partial_contact_line_is_flagged_even_though_the_fit_looks_fine():
-    """The central refusal, and why the obvious diagnostics do not work.
+def test_a_partial_contact_line_down_to_120_degrees_still_works():
+    """Multi-start fixed what a single start got badly wrong.
 
-    A 200-degree arc fits as aspect ~2.0 instead of 1.097 while reporting a
-    small RMS and a *smaller* aspect_std than a good 240-degree arc.  Only the
-    coverage mismatch sees it.
+    An earlier version of this fit recovered aspect 2.03 from a 200-degree arc
+    and 2.28 from a 150-degree arc of an *aspect-1.097* footprint, and the
+    conclusion drawn at the time -- that a partial arc is fundamentally
+    unidentifiable -- was wrong.  The real cause was a local minimum: with four
+    starting points the correct branch wins by orders of magnitude in residual
+    sum of squares (aspect 1.099 at 1.00x, rivals at 8.3x and 13051x).
+
+    So the honest statement is that partial arcs are usable far shorter than
+    that, and these cases must now be *accepted* rather than refused.
     """
-    r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=0, span=200.0))
+    for span in (360.0, 300.0, 240.0, 200.0, 150.0, 120.0):
+        r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=0,
+                                  span=span))
+        assert r.ok, (span, r.error)
+        assert abs(r.aspect - 1.097) < 0.02, (span, r.aspect)
+        assert r.aspect_is_informative is True, (span, r.to_dict())
+
+
+def test_a_very_short_arc_is_refused_on_its_coverage():
+    """Below ~120 degrees the aspect genuinely degrades, so it is not reported.
+
+    Measured bias on a true aspect of 1.0970 at 0.3 px noise: 0.003 at 120
+    degrees, 0.019 at 90, 0.24 at 60, 0.68 at 45.
+    """
+    for span in (90.0, 60.0, 45.0):
+        r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=0,
+                                  span=span))
+        assert r.ok, (span, r.error)
+        assert r.aspect_is_informative is False, (span, r.to_dict())
+        assert r.angular_coverage_deg < 120.0, (span, r.angular_coverage_deg)
+
+
+def test_the_refusal_is_on_coverage_because_the_diagnostics_are_unreliable():
+    """Why the gate is a data property and not an inferred diagnostic.
+
+    The ambiguity statistic fires on only a third of the 60-degree cases and on
+    NONE of the 45-degree ones: once the arc is short enough, every starting
+    point converges to the same wrong answer and there is nothing left to
+    disagree.  A guard that fails exactly when it is needed cannot be the gate,
+    so the refusal is made on the arc's measured extent instead.
+    """
+    flagged_at_60 = 0
+    spread_at_45 = []
+    for seed in range(10):
+        r60 = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=seed,
+                                    span=60.0))
+        assert r60.ok
+        assert r60.aspect_is_informative is False      # coverage gate always holds
+        if r60.aspect_spread > r60.ASPECT_SPREAD_LIMIT:
+            flagged_at_60 += 1
+        r45 = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=seed,
+                                    span=45.0))
+        assert r45.ok
+        assert r45.aspect_is_informative is False
+        spread_at_45.append(r45.aspect_spread)
+
+    # the diagnostics do not cover all the cases the coverage gate does
+    assert flagged_at_60 < 10, flagged_at_60
+    assert all(s <= 0.05 for s in spread_at_45), spread_at_45
+
+
+def test_the_fit_is_multi_start_and_reports_its_branches():
+    """Determinism across platforms matters: a single start was not.
+
+    The same synthetic data fitted to aspect 1.006 on one numpy/scipy version
+    and 2.28 on another.  Every branch must now be reported so a surprising
+    result can be diagnosed rather than re-run.
+    """
+    r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=0))
     assert r.ok
-    assert r.aspect > 1.5, f'expected a badly elongated fit, got {r.aspect}'
-    assert r.aspect_is_informative is False, r.to_dict()
-    assert r.coverage_mismatch_deg > 10.0, r.coverage_mismatch_deg
-
-
-def test_the_coverage_mismatch_separates_good_from_broken_across_spans():
-    """Measure the separation, so the 10-degree limit is not a guess."""
-    good, bad = [], []
-    for span in (360.0, 300.0, 240.0, 210.0):
-        for seed in (0, 1):
-            r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=seed,
-                                      span=span))
-            assert r.ok
-            # these spans are recoverable
-            assert abs(r.aspect - 1.097) < 0.01, (span, r.aspect)
-            assert r.aspect_is_informative is True, (span, r.to_dict())
-            good.append(abs(r.coverage_mismatch_deg))
-    for span in (200.0, 180.0, 150.0):
-        for seed in (0, 1):
-            r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=seed,
-                                      span=span))
-            assert r.ok
-            assert r.aspect > 1.5, (span, r.aspect)
-            assert r.aspect_is_informative is False, (span, r.to_dict())
-            bad.append(abs(r.coverage_mismatch_deg))
-    assert max(good) < 10.0 < min(bad), (max(good), min(bad))
-
-
-def test_a_truncated_circular_footprint_is_flagged_too():
-    """A short arc of a *circle* also fits as an ellipse; the gate must fire."""
-    r = fit_ellipse(*_ellipse(100.0, 100.0, 0.0, noise=0.3, seed=0, span=150.0))
-    assert r.ok
-    assert r.aspect_is_informative is False, r.to_dict()
+    assert r.branches is not None and len(r.branches) >= 2, r.branches
+    for rss, asp in r.branches:
+        assert rss >= 0.0 and asp >= 1.0
+    # the accepted branch is the best one
+    assert abs(min(r.branches)[1] - r.aspect) < 1e-9, (r.branches, r.aspect)
 
 
 # -------------------------------------------------------------- bad inputs
@@ -214,7 +250,7 @@ def test_footprint_from_contact_line_reports_aspect_and_band():
 
 
 def test_footprint_refuses_to_report_an_unconstrained_aspect():
-    x, y = _ellipse(109.7, 100.0, 12.0, noise=0.3, seed=0, span=200.0)
+    x, y = _ellipse(109.7, 100.0, 12.0, noise=0.3, seed=0, span=60.0)
     out = footprint_from_contact_line(x, y)
     assert out['ok'] is True
     assert out['aspect_is_informative'] is False

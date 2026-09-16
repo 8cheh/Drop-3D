@@ -51,6 +51,14 @@ class EllipseFit:
     angular_coverage_deg: float | None = None
     parameter_coverage_deg: float | None = None
     coverage_mismatch_deg: float | None = None
+    #: how far apart the aspect ratios from different starting points ended up.
+    #: A large value means the residual surface has several minima and the data
+    #: does not determine the shape.
+    aspect_spread: float | None = None
+    #: every branch reached, as ``(residual sum of squares, aspect)``.  Kept so
+    #: a surprising fit can be diagnosed without re-running the optimiser, and
+    #: so the ambiguity test can be argued with instead of taken on trust.
+    branches: list | None = None
 
     @property
     def length(self) -> float | None:
@@ -76,47 +84,75 @@ class EllipseFit:
     #: parameter.  **Measured, not chosen** -- see :meth:`aspect_is_informative`.
     COVERAGE_MISMATCH_LIMIT_DEG = 10.0
 
+    #: Largest acceptable disagreement between the aspect ratios reached from
+    #: different starting points.  A larger spread means the fit is multi-modal
+    #: and the shape is not pinned down by the data.
+    ASPECT_SPREAD_LIMIT = 0.05
+
+    #: Minimum angular coverage of the extracted contact line, in degrees,
+    #: before an aspect ratio is reported at all.
+    #:
+    #: **This gate is on the data, not on a diagnostic, and that is deliberate.**
+    #: Measured recovery of a true ``L/W = 1.0970`` footprint at 0.3 px noise:
+    #:
+    #: ==========  ==========  ==========  ==================
+    #: arc span    bias        sd          ambiguity flag fires
+    #: ==========  ==========  ==========  ==================
+    #: 360 deg     0.0003      0.0006      -
+    #: 240 deg     -0.0001     0.0009      -
+    #: 150 deg     -0.0001     0.0073      0/12
+    #: 120 deg     0.0031      0.0135      0/12
+    #: 90 deg      0.0190      0.0248      0/12
+    #: 60 deg      **0.2422**  **0.2595**  **4/12**
+    #: 45 deg      **0.6767**  **1.0562**  **0/12**
+    #: ==========  ==========  ==========  ==================
+    #:
+    #: Below about 90 degrees the aspect genuinely degrades, and the ambiguity
+    #: statistic cannot be relied on to notice: it fires on only a third of the
+    #: 60-degree cases and on **none** of the 45-degree ones, because once the
+    #: arc is short enough every starting point converges to the same wrong
+    #: answer and there is nothing left to disagree.  A guard that fails exactly
+    #: when it is needed is worse than no guard, so the refusal is made on the
+    #: arc's measured extent -- a property of the input, known before any fit is
+    #: attempted -- with the 120-degree limit sitting where the bias is still an
+    #: order of magnitude inside the 0.086-wide homogeneous band.
+    MIN_ARC_FOR_ASPECT_DEG = 120.0
+
     @property
     def aspect_is_informative(self) -> bool | None:
         """Whether the aspect ratio is determined well enough to be read.
 
-        **The gate is the coverage mismatch, not the parameter uncertainty.**
-        That is a measured decision, and the measurement is worth recording
-        because the obvious diagnostic fails:
+        Three independent conditions, all of which must hold.  ``None`` when the
+        coverage could not be computed: an unknown must not be reported as
+        informative, following the same missing-metadata-is-not-a-pass rule the
+        validity gate uses.
 
-        A 200-degree arc of an aspect-1.097 footprint fits as aspect **2.05**,
-        with a perfectly small RMS and a reported ``aspect_std`` of 0.0003 --
-        *smaller* than the 0.0009 reported for a good 240-degree arc.  The fit
-        is locally excellent and globally wrong, so no curvature-based
-        uncertainty can see it.  The same is true of angular coverage about the
-        fitted centre: the broken 200-degree case reports 244 degrees, which is
-        indistinguishable from a legitimate 240-degree arc.
+        1. **The arc must span at least** :data:`MIN_ARC_FOR_ASPECT_DEG`.  This
+           is the load-bearing one and it is a property of the *input*, so it
+           cannot be fooled by an optimiser that converged confidently to the
+           wrong ellipse.
+        2. **The fit must not be multi-modal.**  The same synthetic data fitted
+           to aspect 1.006 under one numpy/scipy version and 2.28 under another,
+           because an arc can sit inside both a near-circular ellipse and a much
+           more elongated one.  A single-start fit therefore returns whatever
+           BLAS it was linked against happened to find, which is not a
+           measurement.  The fit is now multi-start and reports how far apart
+           its branches are.
+        3. **The fitted ellipse must not be distorting the arc**, measured as
+           the disagreement between the arc's extent in real angle and in the
+           ellipse parameter ``t``.
 
-        What does separate them is comparing the arc's extent in real angle
-        against its extent in the ellipse parameter ``t``.  For a consistent
-        fit the two agree to within about 3 degrees:
-
-        ===========  ==============  ==============  =============
-        true span    aspect error    ang. coverage   mismatch
-        ===========  ==============  ==============  =============
-        360 deg      0.0004          357.5           0.1
-        300 deg      -0.0002         302.4           -2.4
-        240 deg      -0.0001         237.7           2.4
-        210 deg      0.0002          207.8           2.3
-        205 deg      **0.417**       221.8           **18.1**
-        200 deg      **1.004**       243.7           **40.0**
-        190 deg      **1.255**       244.2           **47.6**
-        ===========  ==============  ==============  =============
-
-        A mismatched ellipse is one that is *distorting* the arc, which is what
-        an unconstrained shape does when the data cannot pin it down.  The
-        limit of 10 degrees sits between the largest good value (2.4) and the
-        smallest bad one (18.1).
-
-        ``None`` when the coverage could not be computed.  An unknown must not
-        be reported as informative -- the same missing-metadata-is-not-a-pass
-        rule the validity gate follows.
+        Conditions 2 and 3 are secondary: they are useful evidence when they
+        fire, but they are demonstrably not sufficient on their own, which is
+        why condition 1 exists.
         """
+        if self.angular_coverage_deg is None:
+            return None
+        if self.angular_coverage_deg < self.MIN_ARC_FOR_ASPECT_DEG:
+            return False
+        if self.aspect_spread is not None \
+                and self.aspect_spread > self.ASPECT_SPREAD_LIMIT:
+            return False
         if self.coverage_mismatch_deg is None:
             return None
         return bool(self.coverage_mismatch_deg < self.COVERAGE_MISMATCH_LIMIT_DEG)
@@ -130,6 +166,7 @@ class EllipseFit:
                 'angular_coverage_deg': self.angular_coverage_deg,
                 'parameter_coverage_deg': self.parameter_coverage_deg,
                 'coverage_mismatch_deg': self.coverage_mismatch_deg,
+                'aspect_spread': self.aspect_spread,
                 'aspect_is_informative': self.aspect_is_informative,
                 'rms': self.rms, 'n_points': self.n_points}
 
@@ -203,33 +240,90 @@ def fit_ellipse(x: np.ndarray, y: np.ndarray,
         return _point_ellipse_distance(ux, uy, a, b)
 
     p = np.array([cx, cy, a0, b0, th0], dtype=float)
-    r = residuals(p)
-    jac = np.empty((x.size, 5))
-    for _ in range(max_iter):
-        for j in range(5):
-            h = 1e-6 * max(abs(p[j]), 1.0)
-            pp, pm = p.copy(), p.copy()
-            pp[j] += h
-            pm[j] -= h
-            jac[:, j] = (residuals(pp) - residuals(pm)) / (2.0 * h)
-        try:
-            upd, *_ = np.linalg.lstsq(jac, -r, rcond=None)
-        except np.linalg.LinAlgError:
-            break
-        if not np.all(np.isfinite(upd)):
-            break
-        # simple backtracking so a bad step cannot make things worse
-        step, improved = 1.0, False
-        for _ in range(12):
-            trial = p + step * upd
-            if trial[2] > 0 and trial[3] > 0:
-                rt = residuals(trial)
-                if float(rt @ rt) < float(r @ r):
-                    p, r, improved = trial, rt, True
-                    break
-            step *= 0.5
-        if not improved or float(np.linalg.norm(step * upd)) < 1e-12:
-            break
+
+    def refine(start):
+        """Gauss-Newton from one starting point; returns (p, r, jac)."""
+        p = np.array(start, dtype=float)
+        r = residuals(p)
+        jac = np.empty((x.size, 5))
+        for _ in range(max_iter):
+            for j in range(5):
+                h = 1e-6 * max(abs(p[j]), 1.0)
+                pp, pm = p.copy(), p.copy()
+                pp[j] += h
+                pm[j] -= h
+                jac[:, j] = (residuals(pp) - residuals(pm)) / (2.0 * h)
+            try:
+                upd, *_ = np.linalg.lstsq(jac, -r, rcond=None)
+            except np.linalg.LinAlgError:
+                break
+            if not np.all(np.isfinite(upd)):
+                break
+            step, improved = 1.0, False
+            for _ in range(12):
+                trial = p + step * upd
+                if trial[2] > 0 and trial[3] > 0:
+                    rt = residuals(trial)
+                    if float(rt @ rt) < float(r @ r):
+                        p, r, improved = trial, rt, True
+                        break
+                step *= 0.5
+            if not improved or float(np.linalg.norm(step * upd)) < 1e-12:
+                break
+        return p, r, jac
+
+    # --- multi-start.
+    #
+    # A single start is not enough, and this is not theoretical: the same
+    # synthetic data fitted to aspect 1.006 on one numpy/scipy version and 2.28
+    # on another, because the residual surface has more than one local minimum.
+    # An arc can be contained in both a near-circular ellipse and a far more
+    # elongated one.  Which one a single-start fit finds depends on the BLAS and
+    # the library versions, which is not an acceptable basis for a measurement.
+    #
+    # So: fit from several starts, keep the best by residual, and record how far
+    # apart the answers are.  A spread means the data does not determine the
+    # shape, and that is reported rather than resolved by picking a favourite.
+    r_mean = math.sqrt(max(a0 * b0, 1e-12))
+    starts = [p]
+    if a0 > 0 and b0 > 0:
+        starts.append(np.array([cx, cy, r_mean, r_mean, th0]))          # circular
+        starts.append(np.array([cx, cy, 2.0 * r_mean, r_mean, th0]))    # elongated
+        starts.append(np.array([cx, cy, r_mean, r_mean, th0 + math.pi / 2]))
+
+    best = None
+    branches = []
+    for st in starts:
+        cand = refine(st)
+        p_c, r_c, jac_c = cand
+        if not (np.all(np.isfinite(p_c)) and p_c[2] > 0 and p_c[3] > 0):
+            continue
+        rss = float(r_c @ r_c)
+        asp = max(p_c[2], p_c[3]) / max(min(p_c[2], p_c[3]), 1e-12)
+        branches.append((rss, asp))
+        if best is None or rss < best[0]:
+            best = (rss, p_c, r_c, jac_c)
+
+    if best is None:
+        return EllipseFit(error='the fit did not converge to a valid ellipse',
+                          n_points=int(x.size))
+    _, p, r, jac = best
+
+    # A rival branch only makes the answer ambiguous if it fits essentially as
+    # well.  Raw spread over the starts says "other minima exist", which is true
+    # even for a full contact line that pins the ellipse down completely -- a
+    # full aspect-2.5 footprint is recovered as 2.4993 and still has a rival
+    # branch 0.9 away in aspect.  So the rival must be judged by its residual.
+    #
+    # "Essentially as well" is an F-test-style band: the residual sum of squares
+    # may rise by up to a few times the estimated noise contribution per
+    # parameter before the rival is considered competitive.
+    best_rss = best[0]
+    m_pts = x.size
+    n_par = 5
+    slack = 1.0 + 4.0 * n_par / max(m_pts - n_par, 1)
+    competitive = [asp for rss, asp in branches if rss <= best_rss * slack]
+    aspect_spread = (max(competitive) - min(competitive)) if len(competitive) > 1 else 0.0
 
     c_x, c_y, a, b, th = (float(t) for t in p)
     if not all(np.isfinite(t) for t in (c_x, c_y, a, b, th)) or a <= 0 or b <= 0:
@@ -280,7 +374,9 @@ def fit_ellipse(x: np.ndarray, y: np.ndarray,
         rms=float(np.sqrt(np.mean(r ** 2))), n_points=int(x.size),
         aspect_std=aspect_std, theta_std_deg=theta_std,
         angular_coverage_deg=ang_cov, parameter_coverage_deg=t_cov,
-        coverage_mismatch_deg=t_cov - ang_cov)
+        coverage_mismatch_deg=t_cov - ang_cov,
+        aspect_spread=float(aspect_spread),
+        branches=[(float(rss), float(asp)) for rss, asp in branches])
 
 
 def _angular_coverage(angles_rad: np.ndarray) -> float:
