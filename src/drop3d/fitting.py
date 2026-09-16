@@ -95,28 +95,42 @@ class EllipseFit:
     #: **This gate is on the data, not on a diagnostic, and that is deliberate.**
     #: Measured recovery of a true ``L/W = 1.0970`` footprint at 0.3 px noise:
     #:
-    #: ==========  ==========  ==========  ==================
+    #: ==========  ==========  ==========  ============================
     #: arc span    bias        sd          ambiguity flag fires
-    #: ==========  ==========  ==========  ==================
+    #: ==========  ==========  ==========  ============================
     #: 360 deg     0.0003      0.0006      -
     #: 240 deg     -0.0001     0.0009      -
+    #: 180 deg     -0.0043     0.0159      0/12
     #: 150 deg     -0.0001     0.0073      0/12
     #: 120 deg     0.0031      0.0135      0/12
     #: 90 deg      0.0190      0.0248      0/12
     #: 60 deg      **0.2422**  **0.2595**  **4/12**
-    #: 45 deg      **0.6767**  **1.0562**  **0/12**
-    #: ==========  ==========  ==========  ==================
+    #: 45 deg      **0.6767**  **1.0562**  **0/12** sometimes 6.9
+    #: ==========  ==========  ==========  ============================
     #:
-    #: Below about 90 degrees the aspect genuinely degrades, and the ambiguity
-    #: statistic cannot be relied on to notice: it fires on only a third of the
-    #: 60-degree cases and on **none** of the 45-degree ones, because once the
-    #: arc is short enough every starting point converges to the same wrong
-    #: answer and there is nothing left to disagree.  A guard that fails exactly
-    #: when it is needed is worse than no guard, so the refusal is made on the
-    #: arc's measured extent -- a property of the input, known before any fit is
-    #: attempted -- with the 120-degree limit sitting where the bias is still an
-    #: order of magnitude inside the 0.086-wide homogeneous band.
-    MIN_ARC_FOR_ASPECT_DEG = 120.0
+    #: Two things rule out the middle of that range:
+    #:
+    #: * The ambiguity diagnostic **fires in neither direction reliably** -- on
+    #:   one platform it never fired at 45 degrees, on another it fired with a
+    #:   spread of 6.9.  A guard with that behaviour cannot be the gate.
+    #: * The middle range is **not reproducible across platforms**.  A
+    #:   150-degree arc returned 1.1006 (bias +0.004) under numpy 2.2.6 locally
+    #:   and 1.0668 (bias -0.030) under the same numpy on the CI runner.  A
+    #:   0.030 bias is a third ofthe 0.086-wide homogeneous band, and it is
+    #:   larger than the effect the measurement exists to detect.
+    #:
+    #: So the limit is set where the fit is reproducible, not where it is
+    #: merely sometimes accurate: a nominal 240-degree arc is recovered with a
+    #: bias under 0.001 on every platform tested.  Below that the honest answer
+    #: is that this fit cannot currently support an aspect-ratio claim, and a
+    #: caller who needs shorter arcs has to validate the fit on their own data.
+    #:
+    #: The limit is 230 rather than 240 because this is compared against the
+    #: *measured* coverage, and the estimator (:func:`_angular_coverage`)
+    #: subtracts the largest gap between samples, so a nominal 240-degree arc
+    #: reads about 238.  Putting the gate exactly on the nominal span would
+    #: refuse the very case it is meant to accept.
+    MIN_ARC_FOR_ASPECT_DEG = 230.0
 
     @property
     def aspect_is_informative(self) -> bool | None:

@@ -133,7 +133,7 @@ def test_a_full_contact_line_is_informative():
     assert abs(r.coverage_mismatch_deg) < 10.0
 
 
-def test_a_partial_contact_line_down_to_120_degrees_still_works():
+def test_a_partial_contact_line_stays_reliable_down_to_240_degrees():
     """Multi-start fixed what a single start got badly wrong.
 
     An earlier version of this fit recovered aspect 2.03 from a 200-degree arc
@@ -143,10 +143,13 @@ def test_a_partial_contact_line_down_to_120_degrees_still_works():
     starting points the correct branch wins by orders of magnitude in residual
     sum of squares (aspect 1.099 at 1.00x, rivals at 8.3x and 13051x).
 
-    So the honest statement is that partial arcs are usable far shorter than
-    that, and these cases must now be *accepted* rather than refused.
+    The limit asserted here is 240 degrees, not the ~120 degrees an earlier
+    version of this test used.  That was raised after CI showed a 150-degree arc
+    returning 1.0668 (bias -0.030) where the same numpy returned 1.1006 locally.
+    A bias of 0.030 is a third of the homogeneous band, so 150 degrees is not
+    reproducible enough to report.  See fit_ellipse's MIN_ARC_FOR_ASPECT_DEG.
     """
-    for span in (360.0, 300.0, 240.0, 200.0, 150.0, 120.0):
+    for span in (360.0, 300.0, 240.0):
         r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=0,
                                   span=span))
         assert r.ok, (span, r.error)
@@ -154,47 +157,45 @@ def test_a_partial_contact_line_down_to_120_degrees_still_works():
         assert r.aspect_is_informative is True, (span, r.to_dict())
 
 
-def test_a_very_short_arc_is_refused_on_its_coverage():
-    """Below ~120 degrees the aspect genuinely degrades, so it is not reported.
+def test_a_short_arc_is_refused_on_its_coverage_not_on_a_diagnostic():
+    """Below 240 degrees the aspect is not reported, and the gate is coverage.
 
-    Measured bias on a true aspect of 1.0970 at 0.3 px noise: 0.003 at 120
-    degrees, 0.019 at 90, 0.24 at 60, 0.68 at 45.
+    Measured bias on a true aspect of 1.0970 at 0.3 px noise is small at 240
+    degrees (-0.0001) but then grows and stops being reproducible across
+    platforms: 150 degrees gave +0.004 locally and -0.030 on CI.
     """
-    for span in (90.0, 60.0, 45.0):
+    for span in (180.0, 150.0, 120.0, 90.0, 60.0):
         r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=0,
                                   span=span))
         assert r.ok, (span, r.error)
         assert r.aspect_is_informative is False, (span, r.to_dict())
-        assert r.angular_coverage_deg < 120.0, (span, r.angular_coverage_deg)
+        assert r.angular_coverage_deg < 240.0, (span, r.angular_coverage_deg)
 
 
-def test_the_refusal_is_on_coverage_because_the_diagnostics_are_unreliable():
+def test_the_ambiguity_diagnostic_is_not_sufficient_on_its_own():
     """Why the gate is a data property and not an inferred diagnostic.
 
-    The ambiguity statistic fires on only a third of the 60-degree cases and on
-    NONE of the 45-degree ones: once the arc is short enough, every starting
-    point converges to the same wrong answer and there is nothing left to
-    disagree.  A guard that fails exactly when it is needed cannot be the gate,
-    so the refusal is made on the arc's measured extent instead.
-    """
-    flagged_at_60 = 0
-    spread_at_45 = []
-    for seed in range(10):
-        r60 = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=seed,
-                                    span=60.0))
-        assert r60.ok
-        assert r60.aspect_is_informative is False      # coverage gate always holds
-        if r60.aspect_spread > r60.ASPECT_SPREAD_LIMIT:
-            flagged_at_60 += 1
-        r45 = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=seed,
-                                    span=45.0))
-        assert r45.ok
-        assert r45.aspect_is_informative is False
-        spread_at_45.append(r45.aspect_spread)
+    The ambiguity statistic fires in neither direction reliably.  On one
+    platform it never fired across twelve 45-degree cases; on another it fired
+    with a spread of 6.9.  So it cannot be the guard -- sometimes it misses a
+    genuinely broken fit, sometimes it would flag a usable one.
 
-    # the diagnostics do not cover all the cases the coverage gate does
-    assert flagged_at_60 < 10, flagged_at_60
-    assert all(s <= 0.05 for s in spread_at_45), spread_at_45
+    What is asserted is therefore only what both platforms agree on: the
+    coverage gate refuses these cases, and the diagnostic does not cover all of
+    them by itself.
+    """
+    missed = 0
+    for seed in range(10):
+        for span in (90.0, 60.0, 45.0):
+            r = fit_ellipse(*_ellipse(109.7, 100.0, 12.0, noise=0.3, seed=seed,
+                                      span=span))
+            assert r.ok, (span, seed, r.error)
+            # the coverage gate refuses every one of these
+            assert r.aspect_is_informative is False, (span, seed, r.to_dict())
+            if r.aspect_spread <= r.ASPECT_SPREAD_LIMIT:
+                missed += 1
+    # the diagnostic alone would have let several through
+    assert missed > 0, 'the ambiguity statistic unexpectedly covered every case'
 
 
 def test_the_fit_is_multi_start_and_reports_its_branches():
