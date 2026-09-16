@@ -173,7 +173,8 @@ def detect_apex_and_radius(pts: np.ndarray, cap_frac: float = 0.25
 # ----------------------------------------------------------------------- fit
 def _residuals(pts: np.ndarray, shape: YoungLaplaceShape, radius_px: float,
                apex: tuple[float, float], rotation_deg: float,
-               dense: int | None = None) -> np.ndarray:
+               dense: int | None = None,
+               return_index: bool = False):
     """Distance from every measured point to the nearest point on the model.
 
     Distances are unsigned.  The minimum of the sum of squares is attained
@@ -185,6 +186,12 @@ def _residuals(pts: np.ndarray, shape: YoungLaplaceShape, radius_px: float,
     in arc length puts a 0.7 px floor under the residual at R0 = 150 px, which
     is larger than the precision the fit is supposed to reach.  The spacing is
     therefore tied to the on-screen scale, keeping it near a tenth of a pixel.
+
+    With ``return_index=True`` the index of the nearest model vertex is returned
+    alongside the distances.  That index is an ordering key along the meridian --
+    residual arrays follow the *caller's* point order, which for a drop profile
+    typically alternates between the two branches, so anything that cares about
+    correlation *along the profile* (rather than along the array) needs it.
     """
     if dense is None:
         spacing = 0.15                                   # pixels between vertices
@@ -192,7 +199,9 @@ def _residuals(pts: np.ndarray, shape: YoungLaplaceShape, radius_px: float,
     s = np.linspace(0.0, shape.s_max, dense)
     model = _place(shape, s, radius_px, apex, rotation_deg)
     tree = cKDTree(model.T)
-    d, _ = tree.query(pts.T, k=1)
+    d, idx = tree.query(pts.T, k=1)
+    if return_index:
+        return np.asarray(d, dtype=float), np.asarray(idx, dtype=int)
     return np.asarray(d, dtype=float)
 
 

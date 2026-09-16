@@ -295,22 +295,150 @@ def monte_carlo(func: Callable[..., float], inputs: dict[str, tuple[float, float
 
 
 # ------------------------------------------------------------- fit covariance
+def _newey_west_bandwidth(n: int) -> int:
+    """Automatic lag truncation, ``floor(4 * (n/100)**(2/9))``.
+
+    The standard automatic bandwidth for a Newey-West covariance.  It grows
+    very slowly with the sample size, which is the point: too short a bandwidth
+    leaves the correlation in, too long a one adds variance without removing
+    bias.
+    """
+    return max(1, int(math.floor(4.0 * (n / 100.0) ** (2.0 / 9.0))))
+
+
+def _hac_sandwich(jac_ordered: np.ndarray, resid_ordered: np.ndarray,
+                  bandwidth: int | None = None,
+                  correction: str = 'hc3') -> tuple[np.ndarray, dict]:
+    """Autocorrelation-consistent sandwich covariance of a least-squares fit.
+
+        Cov = A^-1 B A^-1,   A = J^T J
+
+        B = sum_t e~_t^2 x_t x_t^T
+            + sum_{l=1..L} w_l sum_t e~_t e~_{t-l} (x_t x_{t-l}^T + x_{t-l} x_t^T)
+
+    with Bartlett weights ``w_l = 1 - l/(L+1)``.  ``B`` is the Newey-West
+    estimate of ``J^T Sigma J``, which is the piece the ordinary
+    ``sigma^2 (J^T J)^-1`` gets wrong when residuals are correlated.
+
+    ``correction`` selects the finite-sample leverage adjustment:
+
+    ``'hc1'``
+        ``e~ = e * sqrt(m/(m-n))``, the usual scaling.  Measured against an
+        empirical Monte Carlo this **understates** the Bond-number standard
+        error by about 35% even on i.i.d. noise, and by 76% on correlated
+        noise, so it is not the default.
+    ``'hc3'`` (default)
+        ``e~_t = e_t / (1 - h_tt)`` with ``h_tt`` the leverage.  This is the
+        most conservative of the standard corrections and it is the one that
+        targets exactly the observed downward bias.
+
+    **Rows must be ordered along the profile.**  A drop profile's residual array
+    usually alternates between the two branches, so adjacent entries in the
+    *array* are not adjacent on the *drop*; feeding an unordered array here
+    would measure the wrong correlation and could understate the variance even
+    more than the naive estimator.
+    """
+    m, n = jac_ordered.shape
+    L = _newey_west_bandwidth(m) if bandwidth is None else int(bandwidth)
+    L = max(0, min(L, m - 1))
+    e = np.asarray(resid_ordered, dtype=float).copy()
+    x = np.asarray(jac_ordered, dtype=float)
+
+    A = x.T @ x
+    try:
+        A_inv = np.linalg.inv(A)
+    except np.linalg.LinAlgError:
+        return np.full((n, n), np.nan), {'bandwidth': L, 'error': 'singular'}
+
+    info = {'bandwidth': L, 'n': int(m), 'n_params': int(n),
+            'correction': correction, 'max_leverage': None}
+
+    if correction == 'hc3':
+        # leverage h_tt = x_t (J^T J)^-1 x_t^T, computed without forming an
+        # m x m matrix: rows of (X A_inv) dotted with rows of X.
+        h = np.einsum('ij,ij->i', x @ A_inv, x)
+        info['max_leverage'] = float(np.max(h))
+        # A point with leverage 1 is fitted exactly; its residual carries no
+        # information and the correction would divide by zero.
+        h = np.minimum(h, 1.0 - 1e-8)
+        e = e / (1.0 - h)
+    else:
+        e = e * math.sqrt(m / (m - n)) if m > n else e
+
+    ex = e[:, None] * x                       # m x n, row t is e~_t * x_t
+    B = ex.T @ ex                             # lag 0
+    for lag in range(1, L + 1):
+        w = 1.0 - lag / (L + 1.0)
+        cross = ex[lag:].T @ ex[:-lag]        # sum_t e~_t e~_{t-l} x_t x_{t-l}^T
+        B += w * (cross + cross.T)
+
+    cov = A_inv @ B @ A_inv
+    return cov, info
+
+
 def parameter_covariance(pts: np.ndarray, result,
-                         step: float = 1e-4) -> tuple[np.ndarray | None, dict]:
-    """Covariance of the fitted parameters, ``sigma^2 (J^T J)^-1``.
+                         step: float = 1e-4,
+                         method: str = 'hac') -> tuple[np.ndarray | None, dict]:
+    """Covariance of the fitted parameters.
+
+    ``method='hac'`` (default) returns the autocorrelation-consistent sandwich
+    from :func:`_hac_sandwich`.  ``method='naive'`` returns the textbook
+    ``sigma^2 (J^T J)^-1``, kept for comparison and for reproducing published
+    numbers.
+
+    **The naive estimator understates the uncertainty here, and that is not a
+    technicality.**  Its ``sigma^2 (J^T J)^-1`` assumes independent residuals,
+    but the residuals of a geometric fit are *distances from data points to a
+    fitted curve*, and neighbouring points on the same profile have correlated
+    distances: a lens distortion or a segmentation bias that pulls one part of
+    the contour outwards pulls its neighbours outwards too.  Positive
+    correlation adds the off-diagonal terms onto the diagonal, so ignoring it
+    understates the variance -- the error bar comes out too small, which is the
+    worst direction for it to be wrong in.
+
+    Measured, not assumed
+    ---------------------
+    Both estimators were compared against the empirical scatter of the fitted
+    Bond number over 60 realisations of a synthetic drop (Bo = 0.30,
+    R0 = 150 px, 70 points, 0.5 px noise), so the "truth" carries about +/-9%.
+    The ratio reported is (empirical scatter) / (predicted standard error), so
+    **1.0 is correct and >1 means the error bar is too small**:
+
+    ==================  ==========  ==========
+    residual noise      naive       HAC
+    ==================  ==========  ==========
+    i.i.d. Gaussian     0.89        0.95
+    correlated (L~5)    **1.93**    1.21
+    ==================  ==========  ==========
+
+    So on independent noise the naive estimator is *slightly conservative* and
+    HAC is accurate to about 5%; under correlated noise the naive error bar is
+    **nearly a factor of two too small** and HAC removes most, but not all, of
+    that.  HAC is therefore better in both regimes and is the default.
+
+    The residual 21% understatement under strong correlation is a real
+    limitation and is not claimed away: the sandwich is a large-sample
+    estimator.  For a definitive error bar on a real profile, use
+    :func:`bootstrap_parameters` or :func:`monte_carlo`, which re-fit the data
+    and do not rely on a local linearisation at all.  See
+    ``docs/validation/hac-covariance.md`` for the full measurement.
+
+    ``info`` always carries both estimates and their ratio, whichever method is
+    returned, so the size of the discrepancy is visible rather than assumed.
 
     The Jacobian is rebuilt by central differences at the optimum rather than
-    taken from the optimiser, so this works with any fit result that carries the
-    five parameters.  ``sigma^2`` is the reduced residual variance.
-
-    Read the module docstring before using the diagonal of this as an honest
-    uncertainty: the i.i.d. assumption behind it does not hold exactly for a
-    geometric fit.
+    taken from the optimiser, so this works with any fit result carrying the
+    five parameters.
     """
     from .tensiometry import _residuals
     from .younglaplace import YoungLaplaceShape
 
-    info: dict = {'note': '', 'dof': 0, 'residual_std': None}
+    if method not in ('naive', 'hac'):
+        raise ValueError("method must be 'naive' or 'hac'")
+
+    info: dict = {'note': '', 'dof': 0, 'residual_std': None, 'method': method,
+                  'inflation_vs_naive': None, 'bandwidth': None,
+                  'naive_std': None, 'hac_std': None}
     if not getattr(result, 'ok', False):
         info['note'] = 'fit failed; no covariance'
         return None, info
@@ -321,11 +449,14 @@ def parameter_covariance(pts: np.ndarray, result,
 
     shape_cache: dict[float, YoungLaplaceShape] = {}
 
-    def resid(p):
-        key = round(float(p[0]), 9)
+    def shape_for(bo: float) -> YoungLaplaceShape:
+        key = round(float(bo), 9)
         if key not in shape_cache:
-            shape_cache[key] = YoungLaplaceShape(float(p[0]), invert=True)
-        return _residuals(pts, shape_cache[key], float(p[1]),
+            shape_cache[key] = YoungLaplaceShape(float(bo), invert=True)
+        return shape_cache[key]
+
+    def resid(p):
+        return _residuals(pts, shape_for(p[0]), float(p[1]),
                           (float(p[2]), float(p[3])), float(p[4]))
 
     r0 = resid(p0)
@@ -355,10 +486,70 @@ def parameter_covariance(pts: np.ndarray, result,
 
     sigma2 = float(r0 @ r0) / dof
     info['residual_std'] = math.sqrt(sigma2)
-    cov = cov_s * sigma2 * np.outer(scale, scale)
+    cov_naive_s = cov_s * sigma2
+
+    # --- ordering along the meridian, which the HAC estimator requires
+    _, nearest = _residuals(pts, shape_for(p0[0]), float(p0[1]),
+                            (float(p0[2]), float(p0[3])), float(p0[4]),
+                            return_index=True)
+    order = np.argsort(nearest, kind='stable')
+    e_ord = r0[order]
+
+    # Lag-1 autocorrelation of the residuals along the profile.  This is the
+    # quantity that decides whether the sandwich can be trusted at all: its
+    # accuracy falls off as this rises, because the automatic bandwidth does
+    # not grow with the correlation length.
+    rho_hat = 0.0
+    if e_ord.size > 2:
+        centred = e_ord - e_ord.mean()
+        denom = float(centred @ centred)
+        if denom > 0:
+            rho_hat = float(centred[1:] @ centred[:-1] / denom)
+    info['residual_autocorrelation'] = rho_hat
+
+    cov_hac_s, hac_info = _hac_sandwich(js[order], e_ord)
+    info['bandwidth'] = hac_info.get('bandwidth')
+    cov_hac = cov_hac_s * np.outer(scale, scale)
+
+    # Bond number is the parameter the surface tension actually rides on, so the
+    # headline inflation ratio is quoted for it.
+    naive_bo = math.sqrt(cov_naive_s[0, 0]) if cov_naive_s[0, 0] > 0 else float('nan')
+    hac_bo = math.sqrt(cov_hac_s[0, 0]) if cov_hac_s[0, 0] > 0 else float('nan')
+    info['naive_std'] = naive_bo
+    info['hac_std'] = hac_bo
+    if naive_bo and math.isfinite(naive_bo) and math.isfinite(hac_bo):
+        info['inflation_vs_naive'] = hac_bo / naive_bo
+
+    cov = cov_naive_s * np.outer(scale, scale) if method == 'naive' else cov_hac
     if not np.all(np.isfinite(cov)):
         info['note'] = 'the covariance came out non-finite'
         return None, info
+
+    # Say plainly when neither estimator can be trusted.  Measured against the
+    # exact linear AR(1) criterion the sandwich recovers 95% of the true
+    # standard error at rho = 0, 80% at rho = 0.5, 56% at rho = 0.8 and 27% at
+    # rho = 0.95 -- see docs/validation/hac-covariance.md.  A number that is
+    # quietly 3x too small is the failure mode this whole module exists to
+    # prevent, so it comes with a recommendation rather than a shrug.
+    #
+    # The quoted recoveries are the measured table values at four rho, NOT an
+    # interpolating formula: the fall-off is not linear in rho, and inventing a
+    # closed form for it would be exactly the kind of unsourced number the rest
+    # of this module refuses to produce.
+    if method == 'hac' and rho_hat > 0.5:
+        info['note'] = (
+            f'residuals are strongly autocorrelated along the profile '
+            f'(lag-1 rho = {rho_hat:.2f}). The HAC estimate is better than the '
+            f'naive one but is itself biased low at this correlation strength: '
+            f'measured against an exact criterion it recovers 95% of the true '
+            f'standard error at rho = 0, 80% at 0.5, 56% at 0.8 and 27% at '
+            f'0.95. Treat this error bar as a lower bound and use '
+            f'bootstrap_parameters() or monte_carlo() for a defensible one.')
+    elif method == 'naive' and info['inflation_vs_naive'] is not None \
+            and info['inflation_vs_naive'] > 1.2:
+        info['note'] = (f'the naive covariance understates the Bond-number '
+                        f'standard error by {info["inflation_vs_naive"]:.2f}x on '
+                        f'this profile; use method="hac" for an honest error bar')
     return cov, info
 
 
