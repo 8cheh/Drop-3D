@@ -30,6 +30,17 @@ blocked.  See ``docs/decisions/0001-license.md`` -- the licence is not settled
 yet, so treat this as not-yet-distributable.
 """
 
+from .conformal import (
+    DEFAULT_WO_BINS,
+    ConformalCalibration,
+    assess_width,
+    calibrate,
+    conformal_quantile,
+    coverage_report,
+    exchangeability_check,
+    predict_interval,
+    required_calibration_size,
+)
 from .dynamics import (
     FURMIDGE_K_ADMISSIBLE,
     FURMIDGE_K_FOURIER_MAX,
@@ -134,4 +145,8 @@ __all__ = [
     # oscillating pendant drop (dynamic, Module A frame-by-frame)
     'fit_oscillation', 'OscillationResult', 'dilational_modulus',
     'synthesise_oscillation', 'frames_per_cycle_note',
+    # conformal intervals (distribution-free uncertainty + width refusal)
+    'ConformalCalibration', 'calibrate', 'predict_interval', 'assess_width',
+    'coverage_report', 'exchangeability_check', 'conformal_quantile',
+    'required_calibration_size', 'DEFAULT_WO_BINS',
 ]
