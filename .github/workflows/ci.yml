@@ -7,14 +7,33 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Cancel superseded runs on the same ref: this repo's test suite is fast, but
-# there is no reason to burn CI minutes on a commit that has already been
-# replaced.
+# Cancel superseded runs on the same ref. The suite takes a few minutes, and
+# there is no reason to spend them on a commit that has already been replaced.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Lint runs once, not in every matrix leg. It is the same check regardless of
+  # the interpreter, and when it shared a job with pytest a single lint slip
+  # *skipped* the tests on all three versions -- so the cheapest check was
+  # hiding the most important one.
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check src tests
+
   test:
     name: test (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -36,9 +55,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-
-      - name: Lint (ruff)
-        run: ruff check src tests tools
 
       - name: Test (pytest)
         run: pytest -q
@@ -66,3 +82,6 @@ jobs:
 
       - name: Synthetic round-trip and end-to-end recovery
         run: pytest -q tests/test_tensiometry.py -k "round_trip or end_to_end"
+
+      - name: Validity gate refuses when it should, and not when it shouldn't
+        run: pytest -q tests/test_validity.py
