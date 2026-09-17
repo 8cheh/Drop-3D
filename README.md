@@ -63,13 +63,55 @@ pip install -e ".[dev]"
 pytest
 ```
 
-```python
-from drop3d import young_laplace_fit, surface_tension, pixel_scale_from_needle
+从一张图像到表面张力（完整链路）：
 
-res = young_laplace_fit(profile_xy)          # (2, N) image pixels, y downward
-px_mm = pixel_scale_from_needle(1.5, 300.0)  # 1.5 mm needle spanning 300 px
-gamma = surface_tension(997.0 - 1.184, res.radius_px, px_mm, res.bond)
+```python
+from drop3d import (segment_drop, extract_profile, young_laplace_fit,
+                    surface_tension, pixel_scale_from_needle, assess, AIR_DENSITY)
+
+seg = segment_drop(image)                    # 二维灰度 numpy 数组
+profile = extract_profile(image, seg)         # (2, N) 亚像素轮廓
+res = young_laplace_fit(profile)
+px_mm = pixel_scale_from_needle(1.5, 60.6)    # 1.5 mm 针头跨 60.6 px
+gamma = surface_tension(998.0 - AIR_DENSITY, res.radius_px, px_mm, res.bond)
+
+report = assess(profile, res, px_size_mm=px_mm,
+                delta_rho=998.0 - AIR_DENSITY, needle_diameter_mm=1.5)
+print(gamma, report.verdict)                  # 闸门不过就不要报这个数
 ```
+
+**五条完整工作流**（静态悬滴 / 表面自由能 / 不确定度 / 振荡悬滴 / 滑移液滴），
+每一段代码都被执行过：见 [`docs/guide/workflows.md`](docs/guide/workflows.md)。
+
+命令行：
+
+```bash
+drop3d-ps                                     # 形状参数 vs Bond 数
+drop3d-ps --target 0.15 --gamma 72 --delta-rho 998
+```
+
+回答的是**实验设计**问题：液滴要多大，轮廓里才带得动表面张力信息。
+
+---
+
+## 模块地图
+
+| 模块 | 干什么 |
+|---|---|
+| `segmentation` | 图像入口：Otsu 阈值 + 测量对称轴 + 亚像素轮廓 |
+| `younglaplace` | 轴对称 Young-Laplace 求解器（`Bo = 0` 精确退化为单位球） |
+| `fitting` | 圆拟合、椭圆拟合（几何距离）、切线夹角 |
+| `tensiometry` | 五参数拟合、尺度标定、γ 换算、Worthington 数、形状参数 |
+| `surface_energy` | OWRK / Fowkes / Wu / 酸碱 / Zisman，**强制报模型间离散度** |
+| `uncertainty` | GUM 传播、Monte Carlo、bootstrap、HAC 稳健协方差、覆盖性检验 |
+| `conformal` | **分布无关**区间，按 Wo 分箱，**按区间宽度拒绝** |
+| `validity` | 分布外拒绝：五道闸门 + 命名错误码 + 可靠性分级 |
+| `dynamics` | 滑移/滚动关系式：Furmidge、Dunlop 精确式、Cox–Voinov、足迹几何 |
+| `oscillation` | 振荡悬滴 → 膨胀模量 E′、E″（相位滞后必须拟合） |
+| `tracking` | 跨帧跟踪同一液滴 + 速度与不确定度 |
+| `hazards` | 采集风险闸门：在实验设计阶段拦住已知的坑 |
+
+该用哪个入口、被拒绝了怎么办：见 [`docs/guide/`](docs/guide/)。
 
 ---
 
@@ -78,17 +120,17 @@ gamma = surface_tension(997.0 - 1.184, res.radius_px, px_mm, res.bond)
 ```
 .github/       CI 工作流、issue / PR 模板
 docs/
+  guide/       使用说明（模块地图、五条工作流、拒绝码含义）
   plan/        研发计划、里程碑
-  log/         研发日志（每次工作一条）
-  research/    调研报告 + 结论索引
+  log/         研发日志（一天一文件，当天多轮按轮次追加，带轮次索引）
+  research/    调研报告 + 结论索引（含已发现的报告内部矛盾）
   decisions/   技术决策记录 (ADR)
+  validation/  验证记录（每个数值主张的实测证据）
 src/drop3d/    核心代码
+src/drop3d/tools/  命令行工具（drop3d-ps）
 tests/         测试
-pyproject.toml 包配置（依赖：numpy + scipy，OpenCV 为可选 extra）
+pyproject.toml 包配置（运行时依赖只有 numpy + scipy）
 ```
-
-命令行工具尚未提供。在它存在之前，这里不列它——
-文档承诺一个不存在的入口，比不写更糟。
 
 ---
 

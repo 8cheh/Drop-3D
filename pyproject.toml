@@ -29,9 +29,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-imaging = [
-    "opencv-python>=4.8",
-]
+# There is deliberately no "imaging" extra.  One was declared for OpenCV, but
+# nothing in the package ever imported cv2 -- segmentation is done with
+# scipy.ndimage -- so it advertised a dependency that was not used.  If a real
+# need for OpenCV appears, add it back together with the code that needs it.
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
