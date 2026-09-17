@@ -38,6 +38,7 @@
 | W1.2 | 五参数最小二乘拟合（Bo/R0/apex/rotation） | ✅ 已完成并验证 |
 | W1.3 | 针头尺度标定 | ✅ 已完成 |
 | W1.4 | 移植到本库 + CI | ✅ 已完成（66 项测试通过） |
+| W1.5 | 图像入口：分割 + 亚像素轮廓 | ✅ **已完成**（`drop3d.segmentation`，合成图像验证） |
 
 ### W2 — 固体表面自由能 ✅ 已实现，待真实数据验证
 
@@ -143,6 +144,7 @@ bootstrap / Monte Carlo。完整证据见
 | W5.5 | 振荡/脉动悬滴 → 膨胀模量 E′, E″ | ✅ **已完成**（`drop3d.oscillation`） |
 | W5.6 | 采集参数风险闸门（调研建议的「动态模式」面板） | ✅ **已完成**（`drop3d.hazards`） |
 | W5.7 | 跨帧跟踪与速度估计 | ✅ **已完成**（`drop3d.tracking`） |
+| W5.8 | 图像入口：分割 → 亚像素轮廓 | ✅ **已完成**（`drop3d.segmentation`，合成图像验证） |
 
 **W5.1 的答案**（[ADR-0002](../decisions/0002-axisymmetric-vs-non-axisymmetric.md)）：
 问题必须拆成两半。

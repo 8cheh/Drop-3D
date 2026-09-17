@@ -80,6 +80,14 @@ from .oscillation import (
     frames_per_cycle_note,
     synthesise_oscillation,
 )
+from .segmentation import (
+    SegmentationResult,
+    extract_profile,
+    find_symmetry_axis,
+    otsu_threshold,
+    segment_drop,
+    synthesise_drop_image,
+)
 from .surface_energy import (
     PROBE_LIQUIDS,
     ProbeLiquid,
@@ -175,4 +183,7 @@ __all__ = [
     # frame-to-frame tracking (dynamic identification of the same drop)
     'link_detections', 'Track', 'fit_velocity', 'assess_track',
     'synthesise_trajectory', 'MAX_GAP_FRAMES',
+    # segmentation (image in, profile out -- the chain's entrance)
+    'segment_drop', 'SegmentationResult', 'extract_profile',
+    'find_symmetry_axis', 'otsu_threshold', 'synthesise_drop_image',
 ]
