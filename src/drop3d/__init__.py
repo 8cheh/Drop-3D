@@ -103,6 +103,14 @@ from .tensiometry import (
     worthington_number,
     young_laplace_fit,
 )
+from .tracking import (
+    MAX_GAP_FRAMES,
+    Track,
+    assess_track,
+    fit_velocity,
+    link_detections,
+    synthesise_trajectory,
+)
 from .uncertainty import (
     Budget,
     UncertaintyResult,
@@ -164,4 +172,7 @@ __all__ = [
     'assess_dynamics', 'DynamicsReport', 'Hazard', 'SAMPLING_PLAN',
     'SCENARIOS', 'SPATIAL_RESOLUTION_UM_PER_PX', 'acquisition_requirements',
     'evaporation_hazard', 'reporting_hazard',
+    # frame-to-frame tracking (dynamic identification of the same drop)
+    'link_detections', 'Track', 'fit_velocity', 'assess_track',
+    'synthesise_trajectory', 'MAX_GAP_FRAMES',
 ]
