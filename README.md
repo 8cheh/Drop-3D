@@ -1,4 +1,4 @@
-# Drop-3D
+# Drop-3D, Easy and Usable
 
 **重建液滴的三维形状，并从中测量界面性质。**
 
