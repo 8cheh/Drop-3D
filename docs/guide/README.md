@@ -6,6 +6,7 @@
 [`docs/validation/`](../validation/)。
 
 - **[workflows.md](workflows.md)** —— 五条可跑的工作流，照着抄就能用
+- **[desktop-app.md](desktop-app.md)** —— Windows 桌面版：怎么跑、八个页面怎么用、怎么打包
 - 本页 —— 模块地图、该用哪个入口、被拒绝了怎么办
 
 ---
@@ -71,6 +72,17 @@ drop3d-ps --target 0.15 --gamma 72 --delta-rho 998
 ```
 
 回答的是**实验设计**问题：液滴要多大，轮廓里才带得动表面张力信息。
+
+### 图形界面（Windows）
+
+```bash
+pip install -e ".[gui]"
+drop3d-gui
+```
+
+八个页面覆盖上面五条工作流加实验设计，中英双语。见
+[desktop-app.md](desktop-app.md)。界面进程只通过 `drop3d_desktop.api`
+调用本库，不重算任何公式——包括「该不该给这个数字」，那也是 `validity` 说了算。
 
 ---
 

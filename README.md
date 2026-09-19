@@ -92,6 +92,18 @@ drop3d-ps --target 0.15 --gamma 72 --delta-rho 998
 
 回答的是**实验设计**问题：液滴要多大，轮廓里才带得动表面张力信息。
 
+### Windows 桌面版
+
+```bash
+pip install -e ".[gui]"
+drop3d-gui
+```
+
+苹果风毛玻璃界面，中英双语，八个页面覆盖上述五条工作流加实验设计。
+每个页面都能一键生成合成数据，所以没有实验数据也能完整体验计算链路。
+打包成可双击运行的 exe：见 [`docs/guide/desktop-app.md`](docs/guide/desktop-app.md)；
+技术选型与依赖决定见 [ADR-0003](docs/decisions/0003-desktop-gui.md)。
+
 ---
 
 ## 模块地图
@@ -120,7 +132,7 @@ drop3d-ps --target 0.15 --gamma 72 --delta-rho 998
 ```
 .github/       CI 工作流、issue / PR 模板
 docs/
-  guide/       使用说明（模块地图、五条工作流、拒绝码含义）
+  guide/       使用说明（模块地图、五条工作流、拒绝码含义、桌面版）
   plan/        研发计划、里程碑
   log/         研发日志（一天一文件，当天多轮按轮次追加，带轮次索引）
   research/    调研报告 + 结论索引（含已发现的报告内部矛盾）
@@ -128,6 +140,7 @@ docs/
   validation/  验证记录（每个数值主张的实测证据）
 src/drop3d/    核心代码
 src/drop3d/tools/  命令行工具（drop3d-ps）
+desktop/       Windows 桌面界面（可选 extra `[gui]`）
 tests/         测试
 pyproject.toml 包配置（运行时依赖只有 numpy + scipy）
 ```

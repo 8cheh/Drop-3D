@@ -32,7 +32,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Lint (ruff)
-        run: ruff check src tests
+        run: ruff check src tests desktop
 
   test:
     name: test (py${{ matrix.python-version }})
@@ -85,3 +85,27 @@ jobs:
 
       - name: Validity gate refuses when it should, and not when it shouldn't
         run: pytest -q tests/test_validity.py
+
+  # The desktop bridge is a plain object with no window, so it is testable on a
+  # headless runner.  That is deliberate: it is the only part of the GUI that can
+  # be checked without a display, and it is where a wrong payload turns into a
+  # dead button.  pywebview is not installed here and must not be needed.
+  desktop:
+    name: desktop bridge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install (without the GUI extra)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: The bridge must import without pywebview present
+        run: python -c "import drop3d_desktop.api, drop3d_desktop.serialize, drop3d_desktop.images"
+
+      - name: Bridge and public-surface tests
+        run: pytest -q tests/test_desktop_api.py tests/test_public_api.py
