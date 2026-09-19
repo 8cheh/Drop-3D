@@ -37,13 +37,27 @@ dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
     "ruff>=0.5",
+    # Needed by tests/test_desktop_api.py, which exercises the desktop image
+    # loader (decoding a camera file into the 2D array the library expects).
+    # The tests skip themselves without it, but then the only code path that
+    # reads a real file would never be tested.
+    "pillow>=10.0",
+]
+# The Windows desktop interface (see desktop/).  Kept out of the core install on
+# purpose: the library's runtime dependencies are numpy + scipy and stay that
+# way, so a user who only wants the numerics never downloads a GUI stack.
+# Rationale and licence check in docs/decisions/0003-desktop-gui.md.
+gui = [
+    "pywebview>=5.0",   # BSD-3-Clause; wraps the Edge WebView2 runtime
+    "pillow>=10.0",     # HPND/MIT-CMU; decodes camera images
 ]
 
 [project.scripts]
 drop3d-ps = "drop3d.tools.shape_parameter_scan:main"
+drop3d-gui = "drop3d_desktop.__main__:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "desktop/src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

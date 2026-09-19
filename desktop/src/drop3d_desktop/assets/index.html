@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Drop-3D</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- The wallpaper is the substrate the frosted panels blur; see style.css. -->
+  <div class="wallpaper"></div>
+
+  <div class="app">
+    <header class="titlebar">
+      <div class="traffic">
+        <button class="close" id="win-close" title="Close"></button>
+        <button class="min" id="win-min" title="Minimise"></button>
+        <button class="max" id="win-max" title="Zoom"></button>
+      </div>
+      <div class="title">Drop-3D <span class="subtitle" data-i18n="app.subtitle"></span></div>
+      <div class="spacer"></div>
+      <div class="lang-switch" id="lang-switch">
+        <button data-lang="zh">中文</button>
+        <button data-lang="en">EN</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="glass sidebar" id="sidebar"></nav>
+      <main class="glass main" id="view"></main>
+    </div>
+  </div>
+
+  <div class="toast-host" id="toasts"></div>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+  <script src="pages.js"></script>
+  <script>
+    // pages.js registers the routes; boot once both scripts are parsed.
+    window.Drop3D.boot();
+  </script>
+</body>
+</html>

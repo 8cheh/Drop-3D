@@ -11,6 +11,20 @@ dist/
 .eggs/
 wheels/
 
+# Desktop application build output.  Freezing produces a ~140 MB tree of binaries
+# that must never be committed; the build is reproducible from
+# desktop/build/Build-Windows.ps1 and desktop/requirements-desktop.txt.
+desktop/dist/
+desktop/.build-venv/
+desktop/build/work/
+*.spec.bak
+
+# ...but desktop/build/ itself is source, not output: it holds the PyInstaller
+# spec and the build script.  The root-level `build/` rule above matches it by
+# name, and a file cannot be re-included while its parent directory is excluded,
+# so the directory is un-ignored here and only its work/ subdirectory is ignored.
+!desktop/build/
+
 # Virtual environments
 .venv/
 venv/
