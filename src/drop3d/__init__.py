@@ -55,6 +55,7 @@ from .dynamics import (
     dunlop_bo_sin_alpha,
     dunlop_residual,
     footprint_aspect,
+    footprint_from_contact_line,
     fourier_c1,
     furmidge_force,
     hysteresis,
